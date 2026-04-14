@@ -6,9 +6,9 @@ from crawl4ai.async_configs import BrowserConfig, CrawlerRunConfig, CacheMode
 
 async def main():
     wikipedia_urls = [
-        "https://it.wikipedia.org/wiki/Minerva_(divinit%C3%A0)",
-        "https://it.wikipedia.org/wiki/Roma",
-        "https://it.wikipedia.org/wiki/Dante_Alighieri",
+        "https://en.wikipedia.org/wiki/Artificial_intelligence",
+        "https://en.wikipedia.org/wiki/Donald_Trump",
+        "https://en.wikipedia.org/wiki/Minerva",
     ]
 
     data_tot = {}
@@ -36,9 +36,22 @@ async def main():
 
         # 4. Rimuovi sezioni non informative (italiano + inglese)
         sections_to_remove = [
-            'See also', 'References', 'External links', 'Further reading',
-            'Notes', 'Sources', 'Footnotes', 'Bibliography',
-            'Voci correlate', 'Note', 'Altri progetti', 'Collegamenti esterni'
+            'See also',
+            'References', 
+            'External links',
+            'Further reading',
+            'Notes',
+            'Sources',
+            'Footnotes',
+            'Bibliography',
+            'Related articles',
+            'Citations',
+            'Works cited',
+            'General references',
+            'Inline notes',
+            'Explanatory notes',
+            'Navigation menu',
+            'Contents',
         ]
         for section in sections_to_remove:
             pattern = rf'## {section}.*?(?=##|\Z)'
@@ -51,8 +64,20 @@ async def main():
         text = re.sub(r'\n\n\n+', '\n\n', text)
         text = text.strip()
 
+        # 7. Rimuovi link vuoti o non informativi → []() o [testo]()
         text = re.sub(r'\[\]\([^\)]*\)', '', text)
+        # 8. Rimuovi backslash residui
+        
+        text = text.replace('\\', '')
 
+        # elimino link con testo ma senza url → [[testo]](url) o [[testo]]
+        # text = re.sub(r'\[\[[^\]]+\]\]\([^\)]*\)', '', text)
+        
+        # elimina link con testo di un solo carattere → [[a]](url) o [[a]]
+        text = re.sub(r'\[\[[a-zA-Z]\]\]\([^\)]*\)', '', text)
+
+        # toglie link tendo pronuncia
+        text = re.sub(r'\[\[([^\]]+)\]\]\([^\)]*\)', r'\1', text)
         return text
 
     async with AsyncWebCrawler(config=browser_config) as crawler:
@@ -64,7 +89,7 @@ async def main():
 
                 data = {
                     "url": result.url,
-                    "domain": "it.wikipedia.org",
+                    "domain": "en.wikipedia.org",
                     "title": result.metadata.get('title', 'N/A'),
                     "parsed_text": cleaned_text
                 }
