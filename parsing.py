@@ -51,6 +51,8 @@ async def main():
         text = re.sub(r'\n\n\n+', '\n\n', text)
         text = text.strip()
 
+        text = re.sub(r'\[\]\([^\)]*\)', '', text)
+
         return text
 
     async with AsyncWebCrawler(config=browser_config) as crawler:
