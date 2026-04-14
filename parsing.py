@@ -4,9 +4,86 @@ import re
 from crawl4ai import AsyncWebCrawler
 from crawl4ai.async_configs import BrowserConfig, CrawlerRunConfig, CacheMode
 
+def token_level_eval(text, gold_text):
+    set_token_parsati = set(text.split())
+    #print(len(set_token_parsati))
+    set_token_gs = set(gold_text.split())
+    #print(len(set_token_gs))
+    res = set_token_gs.intersection(set_token_parsati)
+    #print(set_token_parsati-res)
+    precision = len(res) / len(set_token_parsati) if set_token_parsati else 0
+    recall = len(res) / len(set_token_gs) if set_token_gs else 0
+    f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) else 0
+    print(f"titolo {text[:20]}, precision: {precision:.4f}, recall: {recall:.4f}, F1-score: {f1:.4f}")
+
+
+def parse_markdown_to_clean(text):
+
+    # 1. Rimuovi link wikipedia residui tipo "Testo (disambigua)")
+    text = re.sub(r'"[^"]*\([^)]*\)"\)', '', text)
+
+    # 2. Rimuovi grassetto **testo** mantenendo il testo
+    text = re.sub(r'\*\*([^\*]+)\*\*', r'\1', text)
+
+    # 3. Rimuovi corsivo _testo_ mantenendo il testo
+    text = re.sub(r'_([^_]+)_', r'\1', text)
+
+    # 4. Rimuovi [citation needed] e varianti
+    text = re.sub(r'\[citation needed\]', '', text)
+
+    # 5. Rimuovi sezioni ## e ### finali
+    sections_to_remove = [
+        'See also', 'References', 'External links', 'Further reading',
+        'Notes', 'Sources', 'Footnotes', 'Bibliography', 'Related articles',
+        'Citations', 'Works cited', 'General references', 'Inline notes',
+        'Explanatory notes', 'Navigation menu', 'Contents',
+    ]
+    for section in sections_to_remove:
+        pattern = rf'##\s+{re.escape(section)}.*?(?=##|\Z)'
+        text = re.sub(pattern, '', text, flags=re.DOTALL | re.IGNORECASE)
+
+    # 6. Rimuovi righe che sono solo ## titolo
+    text = re.sub(r'^#{1,3}\s+.*$', '', text, flags=re.MULTILINE)
+
+    # 7. Rimuovi backslash
+    text = re.sub(r'\\', '', text)
+
+    # 8. Rimuovi virgolette iniziali e finali del testo intero
+    text = text.strip('"')
+
+    # 9. Rimuovi link vuoti [](url)
+    text = re.sub(r'\[\]\([^\)]*\)', '', text)
+
+    # 10. Rimuovi link markdown [testo](url) → testo
+    text = re.sub(r'\[([^\]]*)\]\([^\)]+\)', r'\1', text)
+
+    # 11. Rimuovi riferimenti numerici [1], [23]
+    text = re.sub(r'\[\d+\]', '', text)
+
+    # 12. Rimuovi tag HTML residui
+    text = re.sub(r'<[^>]+>', '', text)
+
+    # 13. Rimuovi righe che sono solo simboli
+    text = re.sub(r'^\s*[\|\*\#]+\s*$', '', text, flags=re.MULTILINE)
+
+    # 14. Elimina link con singolo carattere [[a]](url)
+    text = re.sub(r'\[\[[a-zA-Z]\]\]\([^\)]*\)', '', text)
+
+    # 15. Mantieni testo da link doppia parentesi [[testo]](url) → testo
+    text = re.sub(r'\[\[([^\]]+)\]\]\([^\)]*\)', r'\1', text)
+
+    # 16. Pulisci spazi eccessivi
+    text = re.sub(r'\n\n\n+', '\n\n', text)
+    text = text.strip()
+
+    text = re.sub(r'\n', '', text)
+
+    return text
+
+
 async def main():
     wikipedia_urls = [
-        "https://en.wikipedia.org/wiki/Artificial_intelligence",
+        "https://en.wikipedia.org/wiki/BabelNet",
         "https://en.wikipedia.org/wiki/Donald_Trump",
         "https://en.wikipedia.org/wiki/Minerva",
     ]
@@ -16,7 +93,6 @@ async def main():
     browser_config = BrowserConfig(verbose=True, headless=True)
 
     run_config = CrawlerRunConfig(
-        # Seleziona solo paragrafi e titoli, escludendo infobox e navigation
         css_selector="#mw-content-text .mw-parser-output p, #mw-content-text .mw-parser-output h2, #mw-content-text .mw-parser-output h3",
         cache_mode=CacheMode.BYPASS,
         word_count_threshold=0,
@@ -24,68 +100,18 @@ async def main():
         remove_overlay_elements=True,
     )
 
-    def clean_markdown(text):
-        # 1. Converti link markdown in solo testo → [testo](url) diventa testo
-        text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', text)
-
-        # 2. Rimuovi riferimenti numerici [1], [23]
-        text = re.sub(r'\[\d+\]', '', text)
-
-        # 3. Rimuovi tag HTML residui
-        text = re.sub(r'<[^>]+>', '', text)
-
-        # 4. Rimuovi sezioni non informative (italiano + inglese)
-        sections_to_remove = [
-            'See also',
-            'References', 
-            'External links',
-            'Further reading',
-            'Notes',
-            'Sources',
-            'Footnotes',
-            'Bibliography',
-            'Related articles',
-            'Citations',
-            'Works cited',
-            'General references',
-            'Inline notes',
-            'Explanatory notes',
-            'Navigation menu',
-            'Contents',
-        ]
-        for section in sections_to_remove:
-            pattern = rf'## {section}.*?(?=##|\Z)'
-            text = re.sub(pattern, '', text, flags=re.DOTALL | re.IGNORECASE)
-
-        # 5. Rimuovi righe che sono solo link o simboli
-        text = re.sub(r'^\s*[\|\*\#]+\s*$', '', text, flags=re.MULTILINE)
-
-        # 6. Pulisci spazi eccessivi
-        text = re.sub(r'\n\n\n+', '\n\n', text)
-        text = text.strip()
-
-        # 7. Rimuovi link vuoti o non informativi → []() o [testo]()
-        text = re.sub(r'\[\]\([^\)]*\)', '', text)
-        # 8. Rimuovi backslash residui
-        
-        text = text.replace('\\', '')
-
-        # elimino link con testo ma senza url → [[testo]](url) o [[testo]]
-        # text = re.sub(r'\[\[[^\]]+\]\]\([^\)]*\)', '', text)
-        
-        # elimina link con testo di un solo carattere → [[a]](url) o [[a]]
-        text = re.sub(r'\[\[[a-zA-Z]\]\]\([^\)]*\)', '', text)
-
-        # toglie link tendo pronuncia
-        text = re.sub(r'\[\[([^\]]+)\]\]\([^\)]*\)', r'\1', text)
-        return text
+    # Carica i dati gold standard
+    with open('gs.json', 'r', encoding='utf-8') as f:
+        gold_data = json.load(f)
 
     async with AsyncWebCrawler(config=browser_config) as crawler:
         results = await crawler.arun_many(urls=wikipedia_urls, config=run_config)
 
+        i = 0
         for result in results:
             if result.success:
-                cleaned_text = clean_markdown(result.markdown.raw_markdown)
+                # ✅ USA la nuova funzione al posto della vecchia clean_markdown
+                cleaned_text = parse_markdown_to_clean(result.markdown)
 
                 data = {
                     "url": result.url,
@@ -95,10 +121,9 @@ async def main():
                 }
                 data_tot[result.url] = data
 
-                print(f"✓ {result.metadata.get('title', 'N/A')}")
-                print(f"  Lunghezza: {len(result.markdown.raw_markdown)} → Pulito: {len(cleaned_text)} caratteri\n")
-                print(cleaned_text[:500])
                 print("...\n")
+                token_level_eval(cleaned_text, gold_data[0]["gold_text"])
+                
 
             else:
                 print(f"✗ Errore su {result.url}: {result.error_message}")
