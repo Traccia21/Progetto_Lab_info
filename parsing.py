@@ -99,7 +99,7 @@ def parse_markdown_to_clean(text):
 async def main():
     wikipedia_urls = [
         "https://en.wikipedia.org/wiki/BabelNet",
-        "https://en.wikipedia.org/wiki/Donald_Trump",
+        "https://en.wikipedia.org/wiki/Edward_Short,_Baron_Glenamara",
         "https://en.wikipedia.org/wiki/Minerva",
     ]
 
@@ -124,7 +124,8 @@ async def main():
         i = 0
         for result in results:
             if result.success:
-                
+
+                # ✅ USA la nuova funzione al posto della vecchia clean_markdown
                 #print(result.html[:300])
                 print("---\n")
                 #print(result.cleaned_html[:300])
@@ -142,6 +143,7 @@ async def main():
                 #print(result.metadata)
                 
                 print("...\n")
+                print(result.metadata.get('title', 'N/A'))
                 token_level_eval(cleaned_text, gold_data[result.metadata.get('title', 'N/A')]["gold_text"], result.metadata.get('title', 'N/A'))
                 
 
