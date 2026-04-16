@@ -4,17 +4,20 @@ import re
 from crawl4ai import AsyncWebCrawler
 from crawl4ai.async_configs import BrowserConfig, CrawlerRunConfig, CacheMode
 
-def token_level_eval(text, gold_text):
-    set_token_parsati = set(text.lower().split())
+def token_level_eval(text, gold_text, titolo):
+    text = re.split(r'[\s]+', text.lower())
+    set_token_parsati = set(text)
     #print(set_token_parsati)
-    set_token_gs = set(gold_text.lower().split())
+    gold_text = re.split(r'[\s]+', gold_text.lower())
+    set_token_gs = set(gold_text)
     #print(set_token_gs)
     res = set_token_gs.intersection(set_token_parsati)
+    print(set_token_parsati-res)
     
     precision = len(res) / len(set_token_parsati) if set_token_parsati else 0
     recall = len(res) / len(set_token_gs) if set_token_gs else 0
     f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) else 0
-    print(f"titolo {text[:20]}, precision: {precision:.4f}, recall: {recall:.4f}, F1-score: {f1:.4f}")
+    print(f"titolo {titolo}, precision: {precision:.4f}, recall: {recall:.4f}, F1-score: {f1:.4f}")
 
 
 def parse_markdown_to_clean(text):
@@ -78,6 +81,9 @@ def parse_markdown_to_clean(text):
 
     text = re.sub(r'\n', '', text)
 
+    # elimina possibilita di parola.parola ma senza considerare i numeri decimali, ad esempio "3.14" non deve essere modificato, ma "parola.parola" deve diventare "parola. parola"
+    text = re.sub(r'(?<!\d)\.(?!\d)', '. ', text)
+
     text = re.sub(r'\[\]\(https?://[^\)]*\)', '', text)
 
     # [(https://en.wikipedia.org/wiki/Wikipedia:Citationneeded "Wikipedia:Citation needed")]
@@ -99,13 +105,13 @@ async def main():
 
     data_tot = {}
 
-    browser_config = BrowserConfig(verbose=True, headless=True)
+    browser_config = BrowserConfig(verbose=True, headless=True, java_script_enabled=True)
     run_config = CrawlerRunConfig(
-        css_selector="#mw-content-text .mw-parser-output p, #mw-content-text .mw-parser-output h2, #mw-content-text .mw-parser-output h3",
+        #css_selector="#mw-content-text .mw-parser-output p, #mw-content-text .mw-parser-output h2, #mw-content-text .mw-parser-output h3",
         cache_mode=CacheMode.BYPASS,
         word_count_threshold=0,
-        excluded_tags=["nav", "footer", "header", "aside", "script", "style", "table"],
-        remove_overlay_elements=True,
+        excluded_tags=["nav", "footer", "header", "aside", "script", "style", "table", "figure", "figcaption"],
+        excluded_selector=".noprint, .hatnote, .infobox, .metadata, .navbox, .reflist, .references, .citation, .mw-editsection, .mw-references-wrap",
     )
 
     # Carica i dati gold standard
@@ -118,9 +124,13 @@ async def main():
         i = 0
         for result in results:
             if result.success:
-                # ✅ USA la nuova funzione al posto della vecchia clean_markdown
-                #print(result.html)
-                cleaned_text = parse_markdown_to_clean(result.markdown.raw_markdown)
+                
+                #print(result.html[:300])
+                print("---\n")
+                #print(result.cleaned_html[:300])
+                
+
+                cleaned_text = parse_markdown_to_clean(result.markdown)  #fit rispetta il selettore CSS, raw è tutto il testo estratto
 
                 data = {
                     "url": result.url,
@@ -129,9 +139,10 @@ async def main():
                     "parsed_text": cleaned_text
                 }
                 data_tot[result.url] = data
-
+                #print(result.metadata)
+                
                 print("...\n")
-                token_level_eval(cleaned_text, gold_data[0]["gold_text"])
+                token_level_eval(cleaned_text, gold_data[result.metadata.get('title', 'N/A')]["gold_text"], result.metadata.get('title', 'N/A'))
                 
 
             else:
