@@ -5,12 +5,12 @@ from crawl4ai import AsyncWebCrawler
 from crawl4ai.async_configs import BrowserConfig, CrawlerRunConfig, CacheMode
 
 def token_level_eval(text, gold_text):
-    set_token_parsati = set(text.split())
-    #print(len(set_token_parsati))
-    set_token_gs = set(gold_text.split())
-    #print(len(set_token_gs))
+    set_token_parsati = set(text.lower().split())
+    #print(set_token_parsati)
+    set_token_gs = set(gold_text.lower().split())
+    #print(set_token_gs)
     res = set_token_gs.intersection(set_token_parsati)
-    #print(set_token_parsati-res)
+    
     precision = len(res) / len(set_token_parsati) if set_token_parsati else 0
     recall = len(res) / len(set_token_gs) if set_token_gs else 0
     f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) else 0
@@ -78,6 +78,15 @@ def parse_markdown_to_clean(text):
 
     text = re.sub(r'\n', '', text)
 
+    text = re.sub(r'\[\]\(https?://[^\)]*\)', '', text)
+
+    # [(https://en.wikipedia.org/wiki/Wikipedia:Citationneeded "Wikipedia:Citation needed")]
+    text = re.sub(r'\[\(https?://[^\)]*\)\]', '', text)
+    # "Mars , Jupiter , Juno " → "Mars, Jupiter, Juno"
+    text = re.sub(r' {2,}', ' ', text)
+    text = re.sub(r' ,', ',', text)
+    text = re.sub(r' \.', '.', text)
+
     return text
 
 
@@ -91,7 +100,6 @@ async def main():
     data_tot = {}
 
     browser_config = BrowserConfig(verbose=True, headless=True)
-
     run_config = CrawlerRunConfig(
         css_selector="#mw-content-text .mw-parser-output p, #mw-content-text .mw-parser-output h2, #mw-content-text .mw-parser-output h3",
         cache_mode=CacheMode.BYPASS,
@@ -111,7 +119,8 @@ async def main():
         for result in results:
             if result.success:
                 # ✅ USA la nuova funzione al posto della vecchia clean_markdown
-                cleaned_text = parse_markdown_to_clean(result.markdown)
+                #print(result.html)
+                cleaned_text = parse_markdown_to_clean(result.markdown.raw_markdown)
 
                 data = {
                     "url": result.url,
